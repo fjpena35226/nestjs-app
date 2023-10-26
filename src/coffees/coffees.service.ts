@@ -1,47 +1,86 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Coffee } from './entities/coffee.entity';
+import { Injectable } from '@nestjs/common';
+import { Flavor } from '@prisma/client';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { CreateCoffeeDto } from './dto/create-coffee.dto';
+import { UpdateCoffeeDto } from './dto/update-coffee.dto';
 
 @Injectable()
 export class CoffeesService {
-  private coffees: Coffee[] = [
-    {
-      id: 1,
-      name: 'Shipwreck Roast',
-      brand: 'Buddy Brew',
-      flavors: ['chocolate', 'vanilla'],
-    },
-  ];
+  constructor(private readonly prismaService: PrismaService) {}
 
-  findAll() {
-    return this.coffees;
+  async findAll({ limit, offset }: PaginationQueryDto) {
+    return await this.prismaService.coffee.findMany({
+      take: limit,
+      skip: offset,
+      include: {
+        flavors: true,
+      },
+    });
   }
 
-  findOne(id: string) {
-    const coffee = this.coffees.find((item) => item.id === +id);
-    if (!coffee) throw new NotFoundException(`Coffee #${id} not found`);
-    return coffee;
+  async findOne(id: number) {
+    return await this.prismaService.coffee.findFirst({
+      where: { id: +id },
+      include: {
+        flavors: true,
+      },
+    });
   }
 
-  create(createCoffeeDto: any) {
-    this.coffees.push(createCoffeeDto);
-    return createCoffeeDto;
+  async create(createCoffeeDto: CreateCoffeeDto) {
+    const flavors = await Promise.all(
+      createCoffeeDto.flavors.map((flavor) => this.preloadFlavorByName(flavor)),
+    );
+
+    return await this.prismaService.coffee.create({
+      data: {
+        ...createCoffeeDto,
+        flavors: {
+          connect: flavors.map(({ id }) => ({ id })),
+        },
+      },
+      include: {
+        flavors: true,
+      },
+    });
   }
 
-  update(id: string, updateCoffeeDto: any) {
-    let existingCoffee = this.findOne(id);
-    existingCoffee = {
-      ...existingCoffee,
-    };
-    /*  if (existingCoffee) {
-      // update the existing entity
-    } */
-    return existingCoffee;
+  async update(id: number, updateCoffeeDto: UpdateCoffeeDto) {
+    const flavors = await Promise.all(
+      updateCoffeeDto.flavors.map((flavor) => this.preloadFlavorByName(flavor)),
+    );
+
+    return await this.prismaService.coffee.update({
+      where: { id: id },
+      data: {
+        ...updateCoffeeDto,
+        flavors: {
+          set: [],
+          connect: flavors.map(({ id }) => ({ id })),
+        },
+      },
+      include: {
+        flavors: true,
+      },
+    });
   }
 
-  remove(id: string) {
-    const coffeeIndex = this.coffees.findIndex((item) => item.id === +id);
-    if (coffeeIndex >= 0) {
-      this.coffees.splice(coffeeIndex, 1);
-    }
+  async remove(id: number) {
+    return await this.prismaService.coffee.delete({
+      where: { id },
+      include: {
+        flavors: true,
+      },
+    });
+  }
+
+  private async preloadFlavorByName(name: string): Promise<Flavor> {
+    const existingFlavor = await this.prismaService.flavor.findFirst({
+      where: { name },
+    });
+    if (existingFlavor) return existingFlavor;
+
+    return await this.prismaService.flavor.create({ data: { name } });
   }
 }
