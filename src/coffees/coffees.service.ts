@@ -62,7 +62,7 @@ export class CoffeesService {
               this.preloadFlavorByName(flavor),
             ),
           )
-        : (await this.findOne(id)).flavors;
+        : (await this.findOne(id))?.flavors;
 
       return await this.prismaService.coffee.update({
         where: { id: id },
@@ -70,7 +70,7 @@ export class CoffeesService {
           ...updateCoffeeDto,
           flavors: {
             set: [],
-            connect: flavors.map(({ id }) => ({ id })),
+            connect: flavors?.map(({ id }) => ({ id })),
           },
         },
         include: {
